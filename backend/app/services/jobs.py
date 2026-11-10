@@ -2,12 +2,19 @@
 import re
 from typing import Any, Optional
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ai_interface
 from app.config import settings
 from app.models import Commit, Event, Job, Node, NodeCommit, Project
+from app.services.notify import create_notification
+from app.services.unlock import (
+    calculate_completion_score,
+    decide_completion_action,
+    unlock_node,
+)
 
 
 # --- Explicit Tag Matching Helpers ---
@@ -68,8 +75,20 @@ async def process_plan_job(job: Job, db: AsyncSession) -> dict[str, Any]:
     readme = job.payload.get("readme", "")
     file_tree = job.payload.get("file_tree", [])
 
-    # Call AI planning stub
-    plan_data = ai_interface.generate_plan(readme=readme, file_tree=file_tree)
+    try:
+        plan_data = ai_interface.generate_plan(readme=readme, file_tree=file_tree)
+    except Exception as exc:
+        error_msg = f"Plan generation failed: {str(exc)}"
+        event = Event(
+            project_id=project_id,
+            type="plan_failed",
+            payload={"error": error_msg},
+        )
+        db.add(event)
+        job.status = "failed"
+        job.payload = {**job.payload, "error": error_msg}
+        await db.commit()
+        raise
 
     # Save draft plan as an append-only event
     event = Event(
@@ -211,11 +230,172 @@ async def process_match_job(job: Job, db: AsyncSession) -> dict[str, Any]:
 
 
 async def process_judge_job(job: Job, db: AsyncSession) -> dict[str, Any]:
-    """Placeholder for 'judge' job to be completed in Stage 6."""
+    """
+    Execute a 'judge' job:
+    1. Gather signals: pr_merged, ci_passed, files_exist.
+    2. Determine candidate target nodes.
+    3. Call ai_interface.judge_completion for each target node.
+    4. Calculate score via calculate_completion_score.
+    5. If score >= 0.8: auto-complete via unlock_node.
+    6. If 0.5 <= score < 0.8: create 'please confirm' notification for node owner.
+    7. If score < 0.5: leave in_progress.
+    8. Log node_evaluated event.
+    """
+    project_id = job.payload.get("project_id")
+    target_node_id = job.payload.get("node_id")
+    target_node_key = job.payload.get("node_key")
+
+    # Signal 1: CI passed
+    ci_passed = job.payload.get("ci_passed")
+    if ci_passed is None:
+        ci_evt_stmt = (
+            select(Event)
+            .where(Event.project_id == project_id, Event.type == "workflow_run")
+            .order_by(Event.id.desc())
+        )
+        ci_evt = (await db.execute(ci_evt_stmt)).scalars().first()
+        ci_passed = bool(ci_evt and ci_evt.payload.get("conclusion") == "success")
+
+    # Signal 2: PR merged
+    pr_merged = bool(job.payload.get("pr_merged", False))
+    if not pr_merged:
+        pr_evt_stmt = (
+            select(Event)
+            .where(Event.project_id == project_id, Event.type == "pull_request_merged")
+            .order_by(Event.id.desc())
+        )
+        pr_evt = (await db.execute(pr_evt_stmt)).scalars().first()
+        pr_merged = bool(pr_evt and pr_evt.payload.get("merged", False))
+
+    # Candidate nodes
+    if target_node_id:
+        target_nodes = [await db.get(Node, target_node_id)]
+        target_nodes = [n for n in target_nodes if n and n.status in ["ready", "in_progress"]]
+    elif target_node_key:
+        stmt = select(Node).where(
+            Node.project_id == project_id,
+            Node.key == target_node_key,
+            Node.status.in_(["ready", "in_progress"]),
+        )
+        target_nodes = (await db.execute(stmt)).scalars().all()
+    else:
+        stmt = select(Node).where(
+            Node.project_id == project_id,
+            Node.status.in_(["ready", "in_progress"]),
+        )
+        target_nodes = (await db.execute(stmt)).scalars().all()
+
+    # Changed files across all commits in project for files_exist check
+    commits_stmt = select(Commit).where(Commit.project_id == project_id)
+    all_commits = (await db.execute(commits_stmt)).scalars().all()
+    all_changed_files: set[str] = set()
+    for c in all_commits:
+        for f in (c.files or []):
+            all_changed_files.add(f.strip("/").lower())
+
+    results = []
+    for node in target_nodes:
+        # Signal 3: expected_files_exist
+        files_exist = False
+        if not node.path_hints:
+            files_exist = True
+        else:
+            for hint in node.path_hints:
+                norm_hint = hint.strip("/").lower()
+                if any(f.startswith(norm_hint) for f in all_changed_files):
+                    files_exist = True
+                    break
+
+        # Matched commits diff summary
+        nc_stmt = (
+            select(Commit)
+            .join(NodeCommit, NodeCommit.commit_id == Commit.id)
+            .where(NodeCommit.node_id == node.id)
+        )
+        matched_commits = (await db.execute(nc_stmt)).scalars().all()
+        diff_summary = "\n".join(
+            f"Commit {c.sha[:7]}: {c.message} (files: {', '.join(c.files or [])})"
+            for c in matched_commits
+        ) or "No commit diff summary available"
+
+        signals = {
+            "pr_merged": pr_merged,
+            "ci_passed": ci_passed,
+            "files_exist": files_exist,
+        }
+
+        node_dict = {
+            "key": node.key,
+            "title": node.title,
+            "description": node.description,
+            "role": node.role,
+            "done_criteria": node.done_criteria,
+        }
+
+        judge_res = ai_interface.judge_completion(
+            node=node_dict,
+            diff_summary=diff_summary,
+            signals=signals,
+        )
+        verdict = judge_res.get("verdict", "not_done")
+        confidence = float(judge_res.get("confidence", 0.0))
+        reason = judge_res.get("reason", "")
+
+        score = calculate_completion_score(
+            pr_merged=pr_merged,
+            ci_passed=ci_passed,
+            expected_files_exist=files_exist,
+            verdict=verdict,
+            judge_confidence=confidence,
+        )
+
+        action = decide_completion_action(score)
+
+        db.add(
+            Event(
+                project_id=project_id,
+                type="node_evaluated",
+                payload={
+                    "node_id": node.id,
+                    "node_key": node.key,
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "score": score,
+                    "reason": reason,
+                    "action": action,
+                    "signals": signals,
+                },
+            )
+        )
+
+        if action == "auto_complete":
+            await unlock_node(node.id, db)
+        elif action == "ask_confirm":
+            recipient_id = node.owner_id
+            if not recipient_id:
+                proj = await db.get(Project, project_id)
+                recipient_id = proj.owner_id if proj else None
+            if recipient_id:
+                await create_notification(
+                    db=db,
+                    user_id=recipient_id,
+                    project_id=project_id,
+                    node_id=node.id,
+                    message=f"Node [{node.key}] '{node.title}' reached score {score:.2f}. Please confirm completion.",
+                )
+
+        results.append({
+            "node_key": node.key,
+            "node_id": node.id,
+            "score": score,
+            "action": action,
+            "verdict": verdict,
+        })
+
     job.status = "done"
-    job.payload = {**job.payload, "result": "judge_acknowledged"}
+    job.payload = {**job.payload, "result": results}
     await db.commit()
-    return {"status": "ok"}
+    return {"results": results}
 
 
 # --- Worker Queue Processor ---
@@ -259,6 +439,20 @@ async def process_single_job(job: Job, db: AsyncSession) -> dict[str, Any]:
     except Exception as exc:
         if job.attempts >= settings.MAX_JOB_ATTEMPTS:
             job.status = "failed"
+            project_id = job.payload.get("project_id") if isinstance(job.payload, dict) else None
+            if project_id:
+                db.add(
+                    Event(
+                        project_id=project_id,
+                        type="job_failed",
+                        payload={
+                            "job_id": job.id,
+                            "job_type": job.type,
+                            "attempts": job.attempts,
+                            "error": str(exc),
+                        },
+                    )
+                )
         else:
             job.status = "pending"  # Re-enqueue for retry
         job.payload = {**job.payload, "error": str(exc)}
@@ -293,11 +487,11 @@ async def get_or_generate_draft_plan(project_id: int, db: AsyncSession) -> dict[
     """Retrieve existing draft plan event or process pending plan job for project."""
     event_stmt = (
         select(Event)
-        .where(Event.project_id == project_id, Event.type == "plan_draft")
+        .where(Event.project_id == project_id, Event.type.in_(["plan_draft", "plan_failed"]))
         .order_by(Event.id.desc())
     )
-    latest_event = (await db.execute(event_stmt)).scalar_one_or_none()
-    if latest_event:
+    latest_event = (await db.execute(event_stmt)).scalars().first()
+    if latest_event and latest_event.type == "plan_draft":
         return latest_event.payload
 
     job_stmt = (
@@ -308,10 +502,38 @@ async def get_or_generate_draft_plan(project_id: int, db: AsyncSession) -> dict[
     for job in (await db.execute(job_stmt)).scalars().all():
         if job.payload.get("project_id") == project_id:
             job.attempts += 1
-            return await process_plan_job(job, db)
+            try:
+                return await process_plan_job(job, db)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Plan generation failed: {str(exc)}",
+                )
+
+    if latest_event and latest_event.type == "plan_failed":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=latest_event.payload.get("error", "Plan generation failed"),
+        )
 
     proj = await db.get(Project, project_id)
-    plan_data = ai_interface.generate_plan(readme=proj.readme_text or "" if proj else "", file_tree=[])
+    try:
+        plan_data = ai_interface.generate_plan(readme=proj.readme_text or "" if proj else "", file_tree=[])
+    except Exception as exc:
+        error_msg = f"Plan generation failed: {str(exc)}"
+        db.add(
+            Event(
+                project_id=project_id,
+                type="plan_failed",
+                payload={"error": error_msg},
+            )
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_msg,
+        )
+
     event = Event(
         project_id=project_id,
         type="plan_draft",

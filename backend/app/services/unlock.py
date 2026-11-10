@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Edge, Event, Node, Project
+from app.models import Edge, Event, Member, Node, Project
 from app.services.notify import notify_role_unlocked
 
 
@@ -116,6 +116,17 @@ async def unlock_node(node_id: int, db: AsyncSession) -> dict[str, Any]:
             # Unlock child: set to ready
             if child.status == "locked":
                 child.status = "ready"
+
+            # Auto-assign owner if unique member with this role
+            role_members_stmt = select(Member).where(
+                Member.project_id == node.project_id,
+                Member.role == child.role,
+            )
+            role_members = (await db.execute(role_members_stmt)).scalars().all()
+            if len(role_members) == 1:
+                child.owner_id = role_members[0].user_id
+            else:
+                child.owner_id = None
 
             # Make incoming edges to child dotted
             for e in child_incoming_edges:

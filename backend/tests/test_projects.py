@@ -169,3 +169,44 @@ async def test_join_and_add_members(client: AsyncClient, create_user):
     assert add_ai_res.status_code == 201
     assert add_ai_res.json()["user_id"] == dev_ai.id
     assert add_ai_res.json()["role"] == "ai_ml"
+
+
+@pytest.mark.asyncio
+async def test_list_my_projects(client: AsyncClient, create_user):
+    """GET /projects returns all projects where current user is owner or member."""
+    user_a, _, headers_a = await create_user(github_id=1101, username="alice_list")
+    user_b, _, headers_b = await create_user(github_id=1102, username="bob_list")
+
+    with patch("app.services.github.fetch_readme", new_callable=AsyncMock, return_value="# Readme"), \
+         patch("app.services.github.fetch_file_tree", new_callable=AsyncMock, return_value=[]), \
+         patch("app.services.github.register_webhook", new_callable=AsyncMock, return_value={"id": 1}):
+
+        # Alice creates project 1 & 2
+        p1 = await client.post("/projects", json={"repo_owner": "a", "repo_name": "p1"}, headers=headers_a)
+        p1_id = p1.json()["id"]
+        p2 = await client.post("/projects", json={"repo_owner": "a", "repo_name": "p2"}, headers=headers_a)
+        p2_id = p2.json()["id"]
+
+        # Bob creates project 3
+        p3 = await client.post("/projects", json={"repo_owner": "b", "repo_name": "p3"}, headers=headers_b)
+        p3_id = p3.json()["id"]
+
+    # Bob joins project 1
+    join_res = await client.post(f"/projects/{p1_id}/members", json={"role": "frontend"}, headers=headers_b)
+    assert join_res.status_code == 201
+
+    # Alice lists: should see p1 and p2, but not p3
+    alice_list = await client.get("/projects", headers=headers_a)
+    assert alice_list.status_code == 200
+    alice_pids = {p["id"] for p in alice_list.json()}
+    assert p1_id in alice_pids
+    assert p2_id in alice_pids
+    assert p3_id not in alice_pids
+
+    # Bob lists: should see p1 (as member) and p3 (as owner), but not p2
+    bob_list = await client.get("/projects", headers=headers_b)
+    assert bob_list.status_code == 200
+    bob_pids = {p["id"] for p in bob_list.json()}
+    assert p1_id in bob_pids
+    assert p3_id in bob_pids
+    assert p2_id not in bob_pids

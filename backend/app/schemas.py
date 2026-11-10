@@ -39,6 +39,10 @@ class MemberCreate(BaseModel):
     user_id: Optional[int] = None
 
 
+class MemberUpdateRole(BaseModel):
+    role: RoleEnum
+
+
 class MemberResponse(BaseModel):
     id: int
     project_id: int
@@ -47,6 +51,10 @@ class MemberResponse(BaseModel):
     username: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class NodeOwnerUpdate(BaseModel):
+    owner_id: Optional[int] = None
 
 
 # Project Schemas
@@ -128,10 +136,18 @@ class NodeSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProgressSchema(BaseModel):
+    done: int
+    total: int
+    percentage: float
+
+
 class TreeResponse(BaseModel):
     project_id: int
     nodes: list[NodeSchema]
     edges: list[EdgeSchema]
+    progress: ProgressSchema
+    last_event_id: int
 
 
 class MatchedCommitDetail(BaseModel):
@@ -143,9 +159,27 @@ class MatchedCommitDetail(BaseModel):
     method: str
 
 
+class NodeOwnerInfo(BaseModel):
+    id: int
+    username: str
+    avatar_url: Optional[str] = None
+
+
+class AIDecisionInfo(BaseModel):
+    verdict: str
+    confidence: float
+    reason: str
+
+
 class NodeDetailResponse(BaseModel):
     node: NodeSchema
-    commits: list[MatchedCommitDetail]
+    title: str
+    role: str
+    status: str
+    done_criteria: str
+    owner: Optional[NodeOwnerInfo] = None
+    commits: list[MatchedCommitDetail] = Field(default_factory=list)
+    latest_ai_decision: Optional[AIDecisionInfo] = None
 
 
 # Notification Schemas

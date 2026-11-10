@@ -41,5 +41,27 @@ services:
       postgres:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: coordinator_worker
+    restart: unless-stopped
+    command: python -m app.worker
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@postgres:5432/ai_coordinator
+      - SECRET_KEY=supersecretjwtkey_must_be_changed_in_prod_at_least_32_bytes
+      - FERNET_KEY=gH8K6P89YxZ3L1T2W7V5bN0M4Q6R8T1U2I3O4P5A6B7=
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GITHUB_REDIRECT_URI=${GITHUB_REDIRECT_URI:-http://localhost:8000/auth/github/callback}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
 volumes:
   postgres_data:

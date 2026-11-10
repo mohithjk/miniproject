@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Edge, Job, Node, Project
+from app.models import Edge, Event, Job, Node, Project
 from app.services.jobs import process_plan_job
 
 
@@ -80,17 +80,25 @@ async def test_update_draft_plan_valid(client: AsyncClient, create_user):
                 "path_hints": ["frontend/"],
                 "depends_on": ["n1"],
             },
+            {
+                "key": "n3",
+                "title": "Deploy CI/CD",
+                "role": "devops",
+                "done_criteria": "Pipeline passes",
+                "path_hints": [".github/"],
+                "depends_on": ["n1"],
+            },
         ]
     }
 
     put_resp = await client.put(f"/projects/{project_id}/plan", json=valid_plan, headers=headers)
     assert put_resp.status_code == 200
-    assert len(put_resp.json()["nodes"]) == 2
+    assert len(put_resp.json()["nodes"]) == 3
 
     # Verify retrieval reflects update
     get_resp = await client.get(f"/projects/{project_id}/plan", headers=headers)
     assert get_resp.status_code == 200
-    assert len(get_resp.json()["nodes"]) == 2
+    assert len(get_resp.json()["nodes"]) == 3
 
 
 @pytest.mark.asyncio
@@ -227,3 +235,92 @@ async def test_approve_plan_creates_nodes_and_edges(
     assert get_plan.status_code == 200
     reconstructed = get_plan.json()
     assert len(reconstructed["nodes"]) == len(nodes)
+
+
+@pytest.mark.asyncio
+async def test_plan_validation_node_count_limits(client: AsyncClient, create_user):
+    """PUT /projects/{id}/plan must enforce node count between 3 and 40."""
+    project_id, headers = await _create_test_project(client, create_user)
+
+    # 1. Test too few nodes (2 nodes < 3)
+    too_few_plan = {
+        "nodes": [
+            {
+                "key": "n1",
+                "title": "Backend Setup",
+                "role": "backend",
+                "done_criteria": "API running",
+                "path_hints": ["backend/"],
+                "depends_on": [],
+            },
+            {
+                "key": "n2",
+                "title": "Frontend Setup",
+                "role": "frontend",
+                "done_criteria": "UI running",
+                "path_hints": ["frontend/"],
+                "depends_on": ["n1"],
+            },
+        ]
+    }
+    resp_few = await client.put(f"/projects/{project_id}/plan", json=too_few_plan, headers=headers)
+    assert resp_few.status_code == 400
+    assert "between 3 and 40" in resp_few.json()["detail"]
+
+    # 2. Test too many nodes (41 nodes > 40)
+    too_many_nodes = [
+        {
+            "key": f"n{i}",
+            "title": f"Task {i}",
+            "role": "backend",
+            "done_criteria": f"Task {i} done",
+            "path_hints": [],
+            "depends_on": [] if i == 1 else [f"n{i-1}"],
+        }
+        for i in range(1, 42)
+    ]
+    resp_many = await client.put(f"/projects/{project_id}/plan", json={"nodes": too_many_nodes}, headers=headers)
+    assert resp_many.status_code == 400
+    assert "between 3 and 40" in resp_many.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_plan_generation_failure_and_retry(client: AsyncClient, create_user, test_db: AsyncSession):
+    """Plan generation errors must be saved as readable events on the project and allow retry."""
+    user, _, headers = await create_user(github_id=502, username="retry_owner")
+
+    # Create project without auto-running background job
+    with patch("app.services.github.fetch_readme", new_callable=AsyncMock, return_value="# Readme"), \
+         patch("app.services.github.fetch_file_tree", new_callable=AsyncMock, return_value=[]), \
+         patch("app.services.github.register_webhook", new_callable=AsyncMock, return_value={"id": 1}):
+        resp = await client.post(
+            "/projects",
+            json={"repo_owner": "failorg", "repo_name": "failrepo", "owner_role": "backend"},
+            headers=headers,
+        )
+        assert resp.status_code == 201
+        project_id = resp.json()["id"]
+
+    # Mock ai_interface.generate_plan to fail
+    with patch("app.ai_interface.generate_plan", side_effect=RuntimeError("AI model timeout")):
+        # Direct GET /plan will attempt generation and fail
+        get_resp = await client.get(f"/projects/{project_id}/plan", headers=headers)
+        assert get_resp.status_code == 500
+        assert "AI model timeout" in get_resp.json()["detail"]
+
+    # Verify readable error event saved
+    evt_stmt = select(Event).where(Event.project_id == project_id, Event.type == "plan_failed")
+    evt = (await test_db.execute(evt_stmt)).scalar_one_or_none()
+    assert evt is not None
+    assert "AI model timeout" in evt.payload["error"]
+
+    # Retry planning
+    retry_resp = await client.post(f"/projects/{project_id}/plan/retry", headers=headers)
+    assert retry_resp.status_code == 200
+    assert retry_resp.json()["status"] == "plan_retry_queued"
+
+    # Now GET /plan succeeds when AI generation works
+    success_plan = await client.get(f"/projects/{project_id}/plan", headers=headers)
+    assert success_plan.status_code == 200
+    assert len(success_plan.json()["nodes"]) == 3
+

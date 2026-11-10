@@ -37,7 +37,7 @@ async def _setup_project(client: AsyncClient, create_user) -> tuple[int, str, st
 
 @pytest.mark.asyncio
 async def test_webhook_missing_signature(client: AsyncClient, create_user):
-    """Missing X-Hub-Signature-256 must return 400 Bad Request."""
+    """Missing X-Hub-Signature-256 must return 401 Unauthorized."""
     project_id, repo_owner, repo_name, secret, _ = await _setup_project(client, create_user)
 
     body = {
@@ -51,7 +51,7 @@ async def test_webhook_missing_signature(client: AsyncClient, create_user):
         content=raw_body,
         headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 401
     assert "Missing X-Hub-Signature-256" in resp.json()["detail"]
 
 

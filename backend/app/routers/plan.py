@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user, require_member
 from app.db import get_db
-from app.models import Edge, Event, Node, Project, User
+from app.models import Edge, Event, Job, Member, Node, Project, User
 from app.schemas import PlanApproveResponse, PlanNodeSchema, PlanSchema, RoleEnum
 from app.services.jobs import get_or_generate_draft_plan
+from app.services.notify import notify_role_unlocked
 
 router = APIRouter(prefix="/projects/{id}/plan", tags=["plan"])
 
@@ -73,6 +74,13 @@ def validate_plan(nodes: list[PlanNodeSchema]) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cycle detected in plan dependencies: {exc}",
+        )
+
+    # Node count check (between 3 and 40)
+    if len(nodes) < 3 or len(nodes) > 40:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plan node count must be between 3 and 40 (got {len(nodes)})",
         )
 
 
@@ -186,24 +194,51 @@ async def approve_plan(
     # 2. Update project plan status to approved
     project.plan_status = "approved"
 
+    # Fetch members of this project to auto-assign owners to root nodes
+    members_stmt = select(Member).where(Member.project_id == project.id)
+    project_members = (await db.execute(members_stmt)).scalars().all()
+    role_to_members: dict[str, list[Member]] = {}
+    for m in project_members:
+        role_to_members.setdefault(m.role, []).append(m)
+
     # 3. Create Node entities (roots are 'ready', others 'locked')
     created_nodes: list[Node] = []
     for item in plan.nodes:
         is_root = len(item.depends_on) == 0
+        node_role = item.role.value if hasattr(item.role, "value") else str(item.role)
+        owner_id = None
+        if is_root:
+            matching_members = role_to_members.get(node_role, [])
+            if len(matching_members) == 1:
+                owner_id = matching_members[0].user_id
+
         node = Node(
             project_id=project.id,
             key=item.key,
             title=item.title,
             description=item.description,
-            role=item.role.value if hasattr(item.role, "value") else str(item.role),
+            role=node_role,
             done_criteria=item.done_criteria,
             path_hints=item.path_hints,
             status="ready" if is_root else "locked",
+            owner_id=owner_id,
         )
         db.add(node)
         created_nodes.append(node)
 
     await db.flush()  # Populate node.id values
+
+    # Send notifications for ready root nodes
+    for node in created_nodes:
+        if node.status == "ready":
+            await notify_role_unlocked(
+                db=db,
+                project_id=project.id,
+                role=node.role,
+                node_id=node.id,
+                node_key=node.key,
+                node_title=node.title,
+            )
 
     key_to_id = {node.key: node.id for node in created_nodes}
 
@@ -242,3 +277,50 @@ async def approve_plan(
         edges_created=len(created_edges),
         plan_status="approved",
     )
+
+
+@router.post("/retry")
+async def retry_plan(
+    id: int,
+    project: Project = Depends(require_member),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retry plan generation if planning previously failed or is in draft.
+    Blocked if the plan has already been approved.
+    """
+    if project.plan_status == "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot retry planning: plan has already been approved",
+        )
+
+    # Queue a new plan job
+    job = Job(
+        type="plan",
+        status="pending",
+        attempts=0,
+        payload={
+            "project_id": project.id,
+            "readme": project.readme_text or "",
+            "file_tree": [],
+        },
+    )
+    db.add(job)
+
+    db.add(
+        Event(
+            project_id=project.id,
+            type="plan_retry_requested",
+            payload={"requested_by": current_user.id},
+        )
+    )
+    await db.commit()
+    await db.refresh(job)
+
+    return {
+        "status": "plan_retry_queued",
+        "project_id": project.id,
+        "job_id": job.id,
+    }

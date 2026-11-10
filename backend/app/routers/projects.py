@@ -113,6 +113,26 @@ async def create_project(
     return project
 
 
+@router.get("", response_model=list[ProjectResponse])
+async def list_projects(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all projects where current user is the owner or a member."""
+    stmt = (
+        select(Project)
+        .outerjoin(Member, Project.id == Member.project_id)
+        .where(
+            (Project.owner_id == current_user.id) | (Member.user_id == current_user.id)
+        )
+        .distinct()
+        .order_by(Project.id.desc())
+    )
+    result = await db.execute(stmt)
+    projects = result.scalars().all()
+    return projects
+
+
 @router.get("/{id}", response_model=ProjectResponse)
 async def get_project(
     id: int,

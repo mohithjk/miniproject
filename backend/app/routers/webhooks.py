@@ -11,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import decrypt_token
 from app.db import AsyncSessionLocal, get_db
-from app.models import Commit, Event, Job, Project, User, WebhookDelivery
+from app.models import Commit, Event, Job, Node, Project, User, WebhookDelivery
 from app.rate_limiter import RateLimiter
 from app.services import github
+from app.services.jobs import find_tag_in_text
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 webhook_limiter = RateLimiter(requests_limit=120, window_seconds=60)
@@ -118,36 +119,77 @@ async def _handle_push_event(db: AsyncSession, proj: Project, payload: dict[str,
 
 async def _handle_pr_event(db: AsyncSession, project_id: int, payload: dict[str, Any]) -> None:
     action = payload.get("action")
-    is_merged = payload.get("pull_request", {}).get("merged", False)
+    pr_data = payload.get("pull_request", {})
+    is_merged = pr_data.get("merged", False)
 
     if action == "closed" and is_merged:
+        pr_number = payload.get("number") or pr_data.get("number")
+        head_ref = pr_data.get("head", {}).get("ref", "")
+        pr_title = pr_data.get("title", "")
+        pr_body = pr_data.get("body", "") or ""
+
+        # Fetch all nodes to match against branch name or "closes nX"
+        node_stmt = select(Node).where(Node.project_id == project_id)
+        nodes = (await db.execute(node_stmt)).scalars().all()
+        valid_keys = {n.key for n in nodes}
+
+        matched_keys: list[str] = []
+        for text in [head_ref, pr_title, pr_body]:
+            tag = find_tag_in_text(text, valid_keys)
+            if tag and tag not in matched_keys:
+                matched_keys.append(tag)
+
         pr_event = Event(
             project_id=project_id,
             type="pull_request_merged",
             payload={
-                "number": payload.get("number"),
+                "number": pr_number,
                 "merged": True,
+                "head_ref": head_ref,
+                "title": pr_title,
+                "matched_nodes": matched_keys,
             },
         )
         db.add(pr_event)
 
-        judge_job = Job(
-            type="judge",
-            payload={
-                "project_id": project_id,
-                "signal": "pr_merged",
-                "pr_number": payload.get("number"),
-            },
-            status="pending",
-            attempts=0,
-        )
-        db.add(judge_job)
+        if matched_keys:
+            for k in matched_keys:
+                node = next((n for n in nodes if n.key == k), None)
+                judge_job = Job(
+                    type="judge",
+                    payload={
+                        "project_id": project_id,
+                        "node_id": node.id if node else None,
+                        "node_key": k,
+                        "signal": "pr_merged",
+                        "pr_number": pr_number,
+                        "pr_merged": True,
+                    },
+                    status="pending",
+                    attempts=0,
+                )
+                db.add(judge_job)
+        else:
+            judge_job = Job(
+                type="judge",
+                payload={
+                    "project_id": project_id,
+                    "signal": "pr_merged",
+                    "pr_number": pr_number,
+                    "pr_merged": True,
+                },
+                status="pending",
+                attempts=0,
+            )
+            db.add(judge_job)
+
         await db.commit()
 
 
 async def _handle_workflow_event(db: AsyncSession, project_id: int, payload: dict[str, Any]) -> None:
     action = payload.get("action")
-    conclusion = payload.get("workflow_run", {}).get("conclusion")
+    workflow_run = payload.get("workflow_run", {})
+    conclusion = workflow_run.get("conclusion")
 
     if action == "completed":
         ci_event = Event(
@@ -155,7 +197,8 @@ async def _handle_workflow_event(db: AsyncSession, project_id: int, payload: dic
             type="workflow_run",
             payload={
                 "conclusion": conclusion,
-                "name": payload.get("workflow_run", {}).get("name"),
+                "name": workflow_run.get("name"),
+                "head_branch": workflow_run.get("head_branch"),
             },
         )
         db.add(ci_event)
@@ -165,6 +208,7 @@ async def _handle_workflow_event(db: AsyncSession, project_id: int, payload: dic
             payload={
                 "project_id": project_id,
                 "signal": "ci_completed",
+                "ci_passed": conclusion == "success",
                 "conclusion": conclusion,
             },
             status="pending",
@@ -257,7 +301,7 @@ async def github_webhook(
     # 3. Verify HMAC-SHA256 signature on RAW body
     if not signature_header:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing X-Hub-Signature-256 header",
         )
 
