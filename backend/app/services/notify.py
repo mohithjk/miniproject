@@ -1,5 +1,6 @@
 """Notification service for in-app notifications and optional Discord/Slack webhooks."""
 from typing import Optional
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

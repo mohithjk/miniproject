@@ -1,11 +1,8 @@
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Edge, Event, Member, Node, Notification, Project
+from app.models import Edge, Member, Node, Notification, Project
 from app.services.unlock import (
     calculate_completion_score,
     decide_completion_action,

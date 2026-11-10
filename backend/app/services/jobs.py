@@ -1,6 +1,7 @@
 """Background job queue worker (SKIP LOCKED, retries) and job handlers."""
 import re
 from typing import Any, Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

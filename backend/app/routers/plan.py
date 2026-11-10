@@ -1,6 +1,6 @@
 """Plan management router for viewing, editing, and approving project dependency trees."""
 from graphlib import CycleError, TopologicalSorter
-from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

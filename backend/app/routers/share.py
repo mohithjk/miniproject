@@ -1,6 +1,7 @@
 """Share link management and public read-only viewer endpoints."""
 import secrets
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,11 +83,11 @@ async def revoke_share_link(
     else:
         stmt = select(ShareLink).where(
             ShareLink.project_id == project.id,
-            ShareLink.revoked == False,
+            ShareLink.revoked.is_(False),
         )
         links = (await db.execute(stmt)).scalars().all()
-        for l in links:
-            l.revoked = True
+        for link in links:
+            link.revoked = True
 
     db.add(
         Event(

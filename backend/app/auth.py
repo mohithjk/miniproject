@@ -1,12 +1,13 @@
 """Authentication, token encryption, JWT handling, and GitHub OAuth endpoints."""
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+import httpx
+import jwt
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import httpx
-import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

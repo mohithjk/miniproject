@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Any, Optional
+
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,

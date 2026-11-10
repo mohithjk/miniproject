@@ -1,0 +1,102 @@
+[
+  {
+    "sha": "a1b2c3d4e5f67890123456789abcdef012345678",
+    "message": "chore(init): initial commit with directory structure",
+    "timestamp": "2026-11-10T10:00:00Z",
+    "author": {
+      "name": "Lead Architect",
+      "username": "lead-arch",
+      "email": "architect@example.com"
+    },
+    "added": [
+      "README.md",
+      "docker-compose.yml"
+    ],
+    "modified": [],
+    "removed": []
+  },
+  {
+    "sha": "b2c3d4e5f67890123456789abcdef0123456789a",
+    "message": "feat(backend): implement FastAPI app and SQLAlchemy models, closes n1",
+    "timestamp": "2026-11-10T10:15:00Z",
+    "author": {
+      "name": "Backend Engineer",
+      "username": "dev-backend",
+      "email": "backend@example.com"
+    },
+    "added": [
+      "backend/app/main.py",
+      "backend/app/models.py",
+      "backend/app/config.py"
+    ],
+    "modified": [
+      "docker-compose.yml"
+    ],
+    "removed": []
+  },
+  {
+    "sha": "c3d4e5f67890123456789abcdef0123456789ab1",
+    "message": "feat(security): configure fernet encryption for tokens [n2]",
+    "timestamp": "2026-11-10T10:30:00Z",
+    "author": {
+      "name": "Security Specialist",
+      "username": "dev-security",
+      "email": "security@example.com"
+    },
+    "added": [
+      "backend/app/auth.py"
+    ],
+    "modified": [
+      "backend/app/config.py"
+    ],
+    "removed": []
+  },
+  {
+    "sha": "d4e5f67890123456789abcdef0123456789ab12c",
+    "message": "feat(auth): complete GitHub OAuth callback flow, closes n2",
+    "timestamp": "2026-11-10T10:45:00Z",
+    "author": {
+      "name": "Security Specialist",
+      "username": "dev-security",
+      "email": "security@example.com"
+    },
+    "added": [],
+    "modified": [
+      "backend/app/auth.py",
+      "backend/app/services/github.py"
+    ],
+    "removed": []
+  },
+  {
+    "sha": "e5f67890123456789abcdef0123456789ab12c3d",
+    "message": "feat(frontend): scaffold React tree visualization component [n3]",
+    "timestamp": "2026-11-10T11:00:00Z",
+    "author": {
+      "name": "Frontend Designer",
+      "username": "dev-frontend",
+      "email": "frontend@example.com"
+    },
+    "added": [
+      "frontend/src/TreeDashboard.tsx",
+      "frontend/src/NodeItem.tsx"
+    ],
+    "modified": [],
+    "removed": []
+  },
+  {
+    "sha": "f67890123456789abcdef0123456789ab12c3d4e",
+    "message": "feat(frontend): connect node status and edge progression, closes n3",
+    "timestamp": "2026-11-10T11:30:00Z",
+    "author": {
+      "name": "Frontend Designer",
+      "username": "dev-frontend",
+      "email": "frontend@example.com"
+    },
+    "added": [],
+    "modified": [
+      "frontend/src/TreeDashboard.tsx",
+      "frontend/src/App.tsx"
+    ],
+    "removed": []
+  }
+]

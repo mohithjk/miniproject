@@ -1,5 +1,6 @@
 """GitHub API integration service for fetching repository content, commits, and registering webhooks."""
 from typing import Any, Optional
+
 import httpx
 from fastapi import HTTPException, status
 

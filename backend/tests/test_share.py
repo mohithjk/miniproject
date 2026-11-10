@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.rate_limiter import RateLimiter
 
@@ -156,8 +156,7 @@ async def test_viewer_token_cannot_call_write_endpoints(client: AsyncClient, cre
 @pytest.mark.asyncio
 async def test_rate_limiter_blocks_excessive_requests():
     """Unit test RateLimiter triggers 429 when threshold exceeded."""
-    from fastapi import Request
-    from fastapi import HTTPException
+    from fastapi import HTTPException, Request
 
     limiter = RateLimiter(requests_limit=3, window_seconds=60)
     fake_request = Request({"type": "http", "client": ("192.168.1.100", 50000)})

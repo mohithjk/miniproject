@@ -1,10 +1,11 @@
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Event, Job, Member, Project
+from app.models import Event, Job, Member
 
 
 @pytest.mark.asyncio
@@ -22,9 +23,9 @@ async def test_create_project_success(client: AsyncClient, create_user, test_db:
     mock_tree = ["backend/main.py", "frontend/package.json", "docs/spec.md"]
     mock_hook = {"id": 12345, "active": True}
 
-    with patch("app.services.github.fetch_readme", new_callable=AsyncMock, return_value=mock_readme) as mock_fetch_readme, \
-         patch("app.services.github.fetch_file_tree", new_callable=AsyncMock, return_value=mock_tree) as mock_fetch_tree, \
-         patch("app.services.github.register_webhook", new_callable=AsyncMock, return_value=mock_hook) as mock_reg_webhook:
+    with patch("app.services.github.fetch_readme", new_callable=AsyncMock, return_value=mock_readme), \
+         patch("app.services.github.fetch_file_tree", new_callable=AsyncMock, return_value=mock_tree), \
+         patch("app.services.github.register_webhook", new_callable=AsyncMock, return_value=mock_hook):
 
         response = await client.post("/projects", json=payload, headers=headers)
         assert response.status_code == 201

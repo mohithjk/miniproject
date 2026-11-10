@@ -1,5 +1,6 @@
 """Projects management router for connecting repositories and inspecting project metadata."""
 import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

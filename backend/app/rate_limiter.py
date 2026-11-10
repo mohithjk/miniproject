@@ -1,6 +1,7 @@
 """In-memory rate limiter dependency for sensitive or public endpoints."""
 import time
 from collections import defaultdict
+
 from fastapi import HTTPException, Request, status
 
 

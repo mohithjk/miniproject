@@ -1,16 +1,13 @@
 from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Commit, Event, Job, Node, NodeCommit, Project
+from app.models import Commit, Event, Job, Node, NodeCommit
 from app.services.jobs import (
-    find_path_match,
-    find_tag_in_text,
-    process_match_job,
-    process_single_job,
     run_worker_once,
 )
 

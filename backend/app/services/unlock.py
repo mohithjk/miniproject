@@ -1,12 +1,13 @@
 """Node unlock service, dependency cascade progression, and completion decision scoring."""
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Edge, Event, Node, Project
-from app.services.notify import create_notification, notify_role_unlocked
+from app.services.notify import notify_role_unlocked
 
 
 def calculate_completion_score(
