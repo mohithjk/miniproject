@@ -1,13 +1,13 @@
 {
-  "name": "frontend",
+  "name": "cadence-ui",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Cadence: Autonomous Git Dependency Coordinator Interface",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   },
-  "keywords": [],
-  "type": "commonjs",
   "dependencies": {
     "lucide-react": "^1.71.0",
     "react": "^19.3.1",

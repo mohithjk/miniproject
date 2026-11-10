@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-body: "Plus Jakarta Sans", sans-serif;
+  --color-brand: #C2410C;
+  --color-brand-hover: #9A3412;
+  --color-brand-accent: #D97706;
+  --color-brand-light: #FFEDD5;
+  --color-surface-chalk: #FBFBF9;
+  --color-surface-pure: #FFFFFF;
+  --color-surface-panel: #F4F3EF;
+  --color-ink-deep: #0E1013;
+  --color-ink-black: #000000;
+  --color-ink-muted: #57534E;
+  --color-ink-border: #E5E2DC;
+  --color-ink-subtle: #78716C;
+  --color-role-frontend: #0284C7;
+  --color-role-backend: #059669;
+  --color-role-aiml: #D97706;
+  --color-role-security: #DC2626;
+  --color-role-devops: #475569;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-surface-chalk);
+  color: var(--color-ink-deep);
+}
+
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: var(--font-display);
+}
+
+/* Custom architectural scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F3EF;
+}
+::-webkit-scrollbar-thumb {
+  background: #C2410C;
+}
