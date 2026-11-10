@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Event, Job, Member, Node, Notification, Project
+from app.models import Event, Job, Node, Notification, Project
 from app.services.jobs import process_judge_job
 from scripts.simulate_webhooks import sign_payload
 

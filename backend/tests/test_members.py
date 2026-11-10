@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Member, Node, Project
+from app.models import Node
 from app.services.unlock import unlock_node
 
 
