@@ -14,6 +14,24 @@ export function getAccessToken() {
 }
 
 export function getSessionUser(): User | null {
+  // In mock mode, fall back to the mock user saved in localStorage
+  if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_USE_MOCK === "true") {
+    const savedMock = localStorage.getItem("codecanopy.mock-user");
+    if (savedMock) {
+      try {
+        const u = JSON.parse(savedMock);
+        return {
+          id: u.id ?? 1,
+          github_id: u.github_id ?? 123456,
+          username: u.githubUsername || u.name || "demo-user",
+          avatar_url: u.avatar || null,
+        };
+      } catch {
+        return null;
+      }
+    }
+  }
+
   const savedUser = sessionStorage.getItem(USER_KEY);
   if (!savedUser) return null;
 
@@ -28,4 +46,7 @@ export function getSessionUser(): User | null {
 export function clearSession() {
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(USER_KEY);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("codecanopy.mock-user");
+  }
 }

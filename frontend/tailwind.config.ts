@@ -5,6 +5,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        pool: {
+          DEFAULT: "#B9E5EC",
+          light: "#D7EFF4",
+          lighter: "#E5F6F9",
+          dark: "#9FD3DD",
+          darker: "#84C2CD",
+          muted: "#A0C5CC",
+        },
+        cocoa: {
+          DEFAULT: "#3D231E",
+          hover: "#56342D",
+          muted: "rgba(61, 35, 30, 0.55)",
+        },
+        solar: {
+          DEFAULT: "#FFD33D",
+          hover: "#FFDF66",
+        },
         canopy: {
           blue: "#B9E5EC",
           cocoa: "#3D231E",

@@ -154,9 +154,9 @@ export default function ProjectMembersPage() {
           <span>Ask them to sign in, then open this project&apos;s members page to join with their own role.</span>
         </div>
         <div className="plan-actions">
-          <button className="secondary-button" onClick={() => router.push("/dashboard")} type="button">Back to dashboard</button>
-          <button className="primary-button" onClick={() => router.push(`/projects/${projectId}/plan`)} type="button">
-            Back to plan <ArrowRight aria-hidden="true" size={17} />
+          <button className="secondary-button" onClick={() => router.push(`/projects/${projectId}/plan`)} type="button">Back to plan</button>
+          <button className="primary-button" onClick={() => router.push(`/projects/${projectId}/tree`)} type="button">
+            View project tree <ArrowRight aria-hidden="true" size={17} />
           </button>
         </div>
       </section>

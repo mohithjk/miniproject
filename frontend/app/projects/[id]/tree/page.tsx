@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Clock3, GitBranch, GitCommitHorizontal, RefreshCw, UsersRound, X } from "lucide-react";
+import { ArrowLeft, Check, Clock3, GitBranch, GitCommitHorizontal, RefreshCw, Sparkles, UsersRound, X } from "lucide-react";
 import { Brand } from "@/components/Brand";
+import { DemoController } from "@/components/DemoController";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ShareControls } from "@/components/ShareControls";
 import { TreeCanvas } from "@/components/TreeCanvas";
@@ -30,6 +31,9 @@ export default function ProjectTreePage() {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
+  const [demoMode, setDemoMode] = useState(false);
+  const demoModeRef = useRef(false);
+  demoModeRef.current = demoMode;
   const polling = useRef(false);
   const selectedNodeId = useRef<number | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -122,7 +126,9 @@ export default function ProjectTreePage() {
       });
 
     const interval = window.setInterval(() => {
-      void refreshTree(true);
+      if (!demoModeRef.current) {
+        void refreshTree(true);
+      }
     }, 5000);
 
     return () => {
@@ -238,16 +244,46 @@ export default function ProjectTreePage() {
                 <h1>Watch your canopy grow.</h1>
                 <p>Each branch is a piece of work. Finish a step and the next teammate can begin.</p>
               </div>
-              <button
-                aria-label="Refresh project tree"
-                className="refresh-button"
-                onClick={() => void refreshTree(true)}
-                title="Refresh now"
-                type="button"
-              >
-                <RefreshCw aria-hidden="true" size={16} /> <span>Refresh</span>
-              </button>
+              <div className="tree-heading-actions">
+                <button
+                  aria-label="Play demo simulation"
+                  className="demo-toggle-button"
+                  onClick={() => setDemoMode(true)}
+                  type="button"
+                >
+                  <Sparkles aria-hidden="true" size={15} />
+                  <span>Play demo</span>
+                </button>
+                <button
+                  aria-label="Refresh project tree"
+                  className="refresh-button"
+                  onClick={() => void refreshTree(true)}
+                  title="Refresh now"
+                  type="button"
+                >
+                  <RefreshCw aria-hidden="true" size={16} /> <span>Refresh</span>
+                </button>
+              </div>
             </div>
+
+            {demoMode && (
+              <DemoController
+                isActive={demoMode}
+                onClose={() => {
+                  setDemoMode(false);
+                  void refreshTree(true);
+                }}
+                onSelectNode={(node, nodeDetail) => {
+                  setSelectedNode(node);
+                  setDetail(nodeDetail);
+                  selectedNodeId.current = node.id;
+                }}
+                onUpdateTree={(updatedTree) => {
+                  setTree(updatedTree);
+                }}
+                projectId={projectId}
+              />
+            )}
 
             <div className="tree-progress-card">
               <div className="tree-progress-copy">
@@ -261,15 +297,7 @@ export default function ProjectTreePage() {
             </div>
 
             <div className="tree-workspace">
-              <div className="tree-legend" aria-label="Node status legend">
-                <span><i className="legend-dot legend-locked" /> Locked</span>
-                <span><i className="legend-dot legend-ready" /> Ready</span>
-                <span><i className="legend-dot legend-progress" /> In progress</span>
-                <span><i className="legend-dot legend-done" /> Done</span>
-              </div>
-              {pollError && <p className="tree-poll-error" role="status">{pollError}</p>}
-              <TreeCanvas onSelectNode={selectNode} tree={tree} />
-              <div className="edge-legend"><span className="edge-sample edge-sample-dotted" /> Open next step <span className="edge-sample edge-sample-solid" /> Completed dependency</div>
+              <TreeCanvas onSelectNode={selectNode} pollError={pollError} tree={tree} />
             </div>
 
             {selectedNode && (

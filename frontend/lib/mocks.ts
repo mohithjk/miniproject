@@ -104,8 +104,8 @@ export const mockNodes: TreeNode[] = [
 
 export const mockEdges: TreeEdge[] = [
   { id: 1, project_id: 1, from_node: 1, to_node: 2, state: "solid" },
-  { id: 2, project_id: 1, from_node: 1, to_node: 3, state: "solid" },
-  { id: 3, project_id: 1, from_node: 2, to_node: 4, state: "hidden" },
+  { id: 2, project_id: 1, from_node: 1, to_node: 3, state: "dotted" },
+  { id: 3, project_id: 1, from_node: 2, to_node: 4, state: "dotted" },
   { id: 4, project_id: 1, from_node: 3, to_node: 4, state: "hidden" },
 ];
 
@@ -135,7 +135,16 @@ export const mockMembers: Member[] = [
   { id: 2, project_id: 1, user_id: 2, role: "backend", username: "teammate-dev" },
 ];
 
-export const mockShareLinks: ShareLink[] = [];
+export const mockShareLinks: ShareLink[] = [
+  {
+    id: 1,
+    project_id: 1,
+    token: "demo-share-token",
+    revoked: false,
+    created_at: "2026-11-15T12:00:00Z",
+    share_url: "/view/demo-share-token",
+  },
+];
 
 const mockCommits = [
   {
@@ -148,25 +157,42 @@ const mockCommits = [
   },
 ];
 
-export function getMockProjectNodes(projectId: number) {
-  const idOffset = (projectId - 1) * 10;
-  return mockNodes.map((node) => ({
-    ...node,
-    id: node.id + idOffset,
-    project_id: projectId,
-    owner_id: node.owner_id === null ? null : mockUser.id,
-  }));
+// In-memory mutable store for projects, nodes, and edges
+export const projectNodesStore: Record<number, TreeNode[]> = {
+  1: mockNodes.map((n) => ({ ...n })),
+  2: mockNodes.map((n) => ({ ...n, id: n.id + 10, project_id: 2 })),
+};
+
+export const projectEdgesStore: Record<number, TreeEdge[]> = {
+  1: mockEdges.map((e) => ({ ...e })),
+  2: mockEdges.map((e) => ({ ...e, id: e.id + 10, project_id: 2, from_node: e.from_node + 10, to_node: e.to_node + 10 })),
+};
+
+export function getMockProjectNodes(projectId: number): TreeNode[] {
+  if (!projectNodesStore[projectId]) {
+    const idOffset = (projectId - 1) * 10;
+    projectNodesStore[projectId] = mockNodes.map((node) => ({
+      ...node,
+      id: node.id + idOffset,
+      project_id: projectId,
+      owner_id: node.owner_id === null ? null : mockUser.id,
+    }));
+  }
+  return projectNodesStore[projectId];
 }
 
-export function getMockProjectEdges(projectId: number) {
-  const idOffset = (projectId - 1) * 10;
-  return mockEdges.map((edge) => ({
-    ...edge,
-    id: edge.id + idOffset * 10,
-    project_id: projectId,
-    from_node: edge.from_node + idOffset,
-    to_node: edge.to_node + idOffset,
-  }));
+export function getMockProjectEdges(projectId: number): TreeEdge[] {
+  if (!projectEdgesStore[projectId]) {
+    const idOffset = (projectId - 1) * 10;
+    projectEdgesStore[projectId] = mockEdges.map((edge) => ({
+      ...edge,
+      id: edge.id + idOffset * 10,
+      project_id: projectId,
+      from_node: edge.from_node + idOffset,
+      to_node: edge.to_node + idOffset,
+    }));
+  }
+  return projectEdgesStore[projectId];
 }
 
 export function getMockProjectTree(projectId: number): ProjectTree {
@@ -206,24 +232,129 @@ export function getMockPlan(projectId: number): Plan {
   };
 }
 
+export function saveMockPlan(projectId: number, plan: Plan): Plan {
+  const currentNodes = getMockProjectNodes(projectId);
+  const baseId = (projectId - 1) * 10;
+
+  const keyToId = new Map<string, number>();
+  const updatedNodes: TreeNode[] = plan.nodes.map((pNode, index) => {
+    const existing = currentNodes.find((n) => n.key === pNode.key);
+    const id = existing ? existing.id : baseId + index + 1;
+    keyToId.set(pNode.key, id);
+    return {
+      id,
+      project_id: projectId,
+      key: pNode.key,
+      title: pNode.title,
+      description: pNode.description,
+      role: pNode.role,
+      done_criteria: pNode.done_criteria,
+      path_hints: pNode.path_hints || [],
+      status: existing ? existing.status : (index === 0 ? "ready" : "locked"),
+      owner_id: existing ? existing.owner_id : mockUser.id,
+      done_at: existing ? existing.done_at : null,
+    };
+  });
+
+  let edgeId = projectId * 100;
+  const updatedEdges: TreeEdge[] = [];
+  plan.nodes.forEach((pNode) => {
+    const toId = keyToId.get(pNode.key);
+    if (!toId) return;
+    pNode.depends_on.forEach((depKey) => {
+      const fromId = keyToId.get(depKey);
+      if (fromId) {
+        edgeId += 1;
+        const fromNode = updatedNodes.find((n) => n.id === fromId);
+        const state = fromNode?.status === "done" ? "solid" : "dotted";
+        updatedEdges.push({
+          id: edgeId,
+          project_id: projectId,
+          from_node: fromId,
+          to_node: toId,
+          state,
+        });
+      }
+    });
+  });
+
+  projectNodesStore[projectId] = updatedNodes;
+  projectEdgesStore[projectId] = updatedEdges;
+  return plan;
+}
+
+export function confirmMockNode(nodeId: number) {
+  for (const [pIdStr, nodes] of Object.entries(projectNodesStore)) {
+    const projectId = Number(pIdStr);
+    const node = nodes.find((n) => n.id === nodeId);
+    if (node) {
+      node.status = "done";
+      node.done_at = new Date().toISOString();
+
+      const edges = getMockProjectEdges(projectId);
+      edges.forEach((edge) => {
+        if (edge.from_node === nodeId) {
+          edge.state = "solid";
+          const target = nodes.find((n) => n.id === edge.to_node);
+          if (target && target.status === "locked") {
+            const incomingEdges = edges.filter((e) => e.to_node === target.id);
+            const allIncomingDone = incomingEdges.every((e) => {
+              const src = nodes.find((n) => n.id === e.from_node);
+              return src?.status === "done";
+            });
+            if (allIncomingDone) {
+              target.status = "ready";
+            }
+          }
+        }
+      });
+
+      const newNotif: NotificationItem = {
+        id: Math.max(0, ...mockNotifications.map((n) => n.id)) + 1,
+        user_id: mockUser.id,
+        project_id: projectId,
+        message: `${node.role.replace("_", " ")} confirmed "${node.title}". Next work items are unlocked!`,
+        node_id: node.id,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      };
+      mockNotifications.unshift(newNotif);
+
+      return { status: "confirmed", node_id: nodeId, node_status: "done" };
+    }
+  }
+  return { status: "confirmed", node_id: nodeId, node_status: "done" };
+}
+
 export function getMockNodeDetail(nodeId: number): NodeDetail | undefined {
-  const projectId = Math.floor((nodeId - 1) / 10) + 1;
-  const node = getMockProjectNodes(projectId).find((item) => item.id === nodeId);
-  if (!node) return undefined;
-  return {
-    node,
-    title: node.title,
-    role: node.role,
-    status: node.status,
-    done_criteria: node.done_criteria,
-    owner: node.owner_id === null
-      ? null
-      : { id: mockUser.id, username: mockUser.githubUsername, avatar_url: mockUser.avatar },
-    commits: node.key === "n2" ? mockCommits : [],
-    latest_ai_decision: node.key === "n2"
-      ? { verdict: "done", confidence: 0.78, reason: "The dashboard changes appear to match the task criteria." }
-      : null,
-  };
+  for (const [, nodes] of Object.entries(projectNodesStore)) {
+    const node = nodes.find((item) => item.id === nodeId);
+    if (node) {
+      const isDone = node.status === "done";
+      const hasAiVerdict = node.status === "in_progress" || isDone;
+      return {
+        node,
+        title: node.title,
+        role: node.role,
+        status: node.status,
+        done_criteria: node.done_criteria,
+        owner: node.owner_id === null
+          ? null
+          : { id: mockUser.id, username: mockUser.githubUsername, avatar_url: mockUser.avatar },
+        commits: (node.key === "n2" || isDone) ? mockCommits : [],
+        latest_ai_decision: hasAiVerdict
+          ? {
+              verdict: "done",
+              confidence: isDone ? 0.98 : 0.78,
+              reason: isDone
+                ? "All criteria verified through automated checks and user confirmation."
+                : "The changes appear to match the task criteria, but need team confirmation.",
+            }
+          : null,
+      };
+    }
+  }
+  return undefined;
 }
 
 export function addMockMember(projectId: number, role: Role): Member {

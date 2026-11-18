@@ -1,6 +1,7 @@
 import { getAccessToken } from "@/lib/session";
 import {
   addMockMember,
+  confirmMockNode,
   getMockNodeDetail,
   getMockPlan,
   getMockProjectTree,
@@ -10,6 +11,7 @@ import {
   mockProjects,
   mockShareLinks,
   mockUser,
+  saveMockPlan,
 } from "@/lib/mocks";
 import type {
   AuthResponse,
@@ -37,7 +39,7 @@ export const useMockData = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 function apiBaseUrl() {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
   if (!baseUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is missing. Add it to frontend/.env.local and restart Next.js.");
+    throw new ApiError("Unable to connect to the project service. Please try again later.", 503);
   }
   return baseUrl;
 }
@@ -57,7 +59,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     });
   } catch (error: unknown) {
     if (error instanceof TypeError) {
-      throw new ApiError("Could not reach the backend. Check that it is running and accessible from this frontend.", 0);
+      throw new ApiError("Could not connect to the service. Please check your connection and try again.", 0);
     }
     throw error;
   }
@@ -90,20 +92,68 @@ export const api = {
     return request<Project[]>("/projects");
   },
 
-  createProject(repoOwner: string, repoName: string, ownerRole: Role) {
+  async createProject(repoOwner: string, repoName: string, ownerRole: Role) {
     if (useMockData) {
+      // Simulate realistic AI reading README time so the loading state is visible
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      const newId = Math.max(0, ...mockProjects.map((item) => item.id)) + 1;
       const project: Project = {
-        id: Math.max(0, ...mockProjects.map((item) => item.id)) + 1,
+        id: newId,
         owner_id: mockUser.id,
         repo_owner: repoOwner,
         repo_name: repoName,
-        plan_status: "approved",
+        plan_status: "draft",
         status: "active",
         created_at: new Date().toISOString(),
       };
       mockProjects.unshift(project);
       addMockMember(project.id, ownerRole);
-      return Promise.resolve(project);
+
+      // Initialize starter draft plan for this project
+      const starterPlan: Plan = {
+        nodes: [
+          {
+            key: "n1",
+            title: `Set up ${repoName} foundation`,
+            description: "Initialize directory structure, shared types, and build scripts.",
+            role: ownerRole,
+            done_criteria: "The project compiles cleanly and team conventions are documented.",
+            path_hints: ["src"],
+            depends_on: [],
+          },
+          {
+            key: "n2",
+            title: "Build core user interface",
+            description: "Implement interactive client components and responsive layouts.",
+            role: "frontend",
+            done_criteria: "UI is responsive and adheres to brand color palette.",
+            path_hints: ["frontend"],
+            depends_on: ["n1"],
+          },
+          {
+            key: "n3",
+            title: "Configure API endpoints and data model",
+            description: "Connect services and implement data validation.",
+            role: "backend",
+            done_criteria: "All CRUD endpoints return correct data contracts.",
+            path_hints: ["backend"],
+            depends_on: ["n1"],
+          },
+          {
+            key: "n4",
+            title: "Security and permission audit",
+            description: "Verify role-based access control and sanitize user inputs.",
+            role: "security",
+            done_criteria: "Audit passes with zero critical vulnerabilities.",
+            path_hints: ["security"],
+            depends_on: ["n2", "n3"],
+          },
+        ],
+      };
+      saveMockPlan(newId, starterPlan);
+
+      return project;
     }
     return request<Project>("/projects", {
       method: "POST",
@@ -131,7 +181,7 @@ export const api = {
   },
 
   savePlan(projectId: number, plan: Plan) {
-    if (useMockData) return Promise.resolve(plan);
+    if (useMockData) return Promise.resolve(saveMockPlan(projectId, plan));
     return request<Plan>(`/projects/${projectId}/plan`, {
       method: "PUT",
       body: JSON.stringify(plan),
@@ -201,7 +251,7 @@ export const api = {
 
   confirmNode(nodeId: number) {
     if (useMockData) {
-      return Promise.resolve({ status: "confirmed", node_id: nodeId, node_status: "done" });
+      return Promise.resolve(confirmMockNode(nodeId));
     }
     return request<{ status: string; node_id: number; node_status: string }>(`/nodes/${nodeId}/confirm`, {
       method: "POST",

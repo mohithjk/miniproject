@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Plus } from "lucide-react";
 import { Brand } from "@/components/Brand";
+import { NotificationBell } from "@/components/NotificationBell";
 import { ProjectList } from "@/components/ProjectList";
 import { ApiError, api, useMockData } from "@/lib/api";
 import { getCurrentUser, signOut, type CurrentUser } from "@/lib/auth";
@@ -55,6 +56,7 @@ export default function DashboardPage() {
         <Brand />
         {user && (
           <div className="account-menu">
+            <NotificationBell />
             {user.avatar ? (
               // GitHub provides a remote avatar; a plain img avoids extra domain setup.
               // eslint-disable-next-line @next/next/no-img-element

@@ -3,8 +3,8 @@ export function TreeIllustration() {
     <svg aria-label="A growing tree with a path becoming solid" className="tree-illustration" role="img" viewBox="0 0 560 340">
       <defs>
         <linearGradient id="canopy" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="#ffffff" stopOpacity=".96" />
-          <stop offset="1" stopColor="#ffffff" stopOpacity=".46" />
+          <stop offset="0" stopColor="#D7EFF4" stopOpacity=".96" />
+          <stop offset="1" stopColor="#D7EFF4" stopOpacity=".46" />
         </linearGradient>
       </defs>
       <path className="tree-ground" d="M45 300c125-24 228-14 327-1 48 6 94 4 144-8" />

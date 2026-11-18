@@ -50,11 +50,12 @@ export function LoginScreen() {
             {connecting ? "Connecting..." : "Continue with GitHub"}
           </button>
           {error && <p aria-live="polite" className="error-message">{error}</p>}
+          {/* Tagline placed below the GitHub button with dedicated spacing */}
+          <p className="login-footer">Made for teams that grow better together.</p>
           <p className="privacy-note">
             We only read your repository to build your project plan. We never change your code.
           </p>
         </div>
-        <p className="login-footer">Made for teams that grow better together.</p>
       </section>
     </main>
   );

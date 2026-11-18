@@ -123,23 +123,16 @@ export default function SharedTreePage() {
           <div className="tree-load-error" role="alert">
             <span className="viewer-error-icon"><GitBranch aria-hidden="true" size={24} /></span>
             <h1>
-              {error.includes("NEXT_PUBLIC_API_URL")
-                ? "Finish setting up the frontend."
-                : errorStatus === 404
-                  ? "This viewer link isn't available."
-                  : errorStatus === 429
-                    ? "The viewer is busy right now."
-                    : errorStatus === 0
-                      ? "We couldn't reach the project service."
-                      : "We couldn't load this project tree."}
+              {errorStatus === 404
+                ? "This viewer link isn't available."
+                : errorStatus === 429
+                  ? "The viewer is busy right now."
+                  : "We couldn't load this project tree."}
             </h1>
-            <p>{error}</p>
             <p>
-              {error.includes("NEXT_PUBLIC_API_URL")
-                ? "Set NEXT_PUBLIC_API_URL in frontend/.env.local and restart the frontend server."
-                : errorStatus === 404
-                  ? "The link may be invalid or its owner may have revoked it."
-                  : "Check your connection and try again. This page will retry automatically."}
+              {errorStatus === 404
+                ? "The link may be invalid or its owner may have revoked it."
+                : "Please check your connection or try again later. This page will retry automatically."}
             </p>
           </div>
         ) : tree ? (
@@ -164,16 +157,8 @@ export default function SharedTreePage() {
               <span className="polling-label"><Clock3 aria-hidden="true" size={13} /> Live updates every 5 seconds</span>
             </div>
 
-            {error && <p className="tree-poll-error viewer-poll-error" role="status">{error}</p>}
             <div className="tree-workspace viewer-workspace">
-              <div className="tree-legend" aria-label="Node status legend">
-                <span><i className="legend-dot legend-locked" /> Locked</span>
-                <span><i className="legend-dot legend-ready" /> Ready</span>
-                <span><i className="legend-dot legend-progress" /> In progress</span>
-                <span><i className="legend-dot legend-done" /> Done</span>
-              </div>
-              <TreeCanvas onSelectNode={selectNode} tree={tree} />
-              <div className="edge-legend"><span className="edge-sample edge-sample-dotted" /> Open next step <span className="edge-sample edge-sample-solid" /> Completed dependency</div>
+              <TreeCanvas onSelectNode={selectNode} pollError={error} tree={tree} />
             </div>
 
             {selectedNode && (
