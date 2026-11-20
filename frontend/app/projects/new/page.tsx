@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Github, Sprout } from "lucide-react";
 import { Brand } from "@/components/Brand";
+import { ConnectStepper } from "@/components/ConnectStepper";
 import { RoleSelect } from "@/components/RoleSelect";
 import { api } from "@/lib/api";
-import { getSessionUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 
 export default function ConnectRepositoryPage() {
@@ -18,7 +19,14 @@ export default function ConnectRepositoryPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getSessionUser()) router.replace("/login");
+    const user = getCurrentUser();
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+    if (user.role === "mentor") {
+      router.replace("/dashboard");
+    }
   }, [router]);
 
   async function connectRepository(event: FormEvent<HTMLFormElement>) {
@@ -34,7 +42,7 @@ export default function ConnectRepositoryPage() {
     setConnecting(true);
     try {
       const project = await api.createProject(parts[0], parts[1], role);
-      router.push(`/projects/${project.id}/plan`);
+      router.push(`/projects/${project.id}/summary`);
     } catch (connectError: unknown) {
       setConnecting(false);
       setError(connectError instanceof Error ? connectError.message : "Could not connect this repository.");
@@ -47,6 +55,10 @@ export default function ConnectRepositoryPage() {
         <Brand />
         <Link className="back-link" href="/dashboard"><ArrowLeft aria-hidden="true" size={16} /> Dashboard</Link>
       </header>
+
+      <div className="stepper-wrapper">
+        <ConnectStepper currentStep="connect" />
+      </div>
 
       <section className="onboarding-content">
         <div className="onboarding-step"><span>01</span> Connect a repository</div>

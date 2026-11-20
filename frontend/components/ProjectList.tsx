@@ -20,24 +20,45 @@ export function ProjectList({ projects }: ProjectListProps) {
 
   return (
     <div className="project-grid">
-      {projects.map((project) => (
-        <Link
-          className="project-card"
-          href={project.plan_status === "approved" ? `/projects/${project.id}/tree` : `/projects/${project.id}/plan`}
-          key={project.id}
-        >
-          <div className="project-card-top">
-            <span className="repo-icon"><Sprout aria-hidden="true" size={18} /></span>
-            <ArrowUpRight aria-hidden="true" className="project-arrow" size={18} />
-          </div>
-          <p className="repo-owner">{project.repo_owner}</p>
-          <h2>{project.repo_name}</h2>
-          <div className="project-meta">
-            <span className={`status-pill status-${project.status}`}>{project.status.replace("_", " ")}</span>
-            <span>{project.plan_status === "approved" ? "Plan approved" : "Plan in progress"}</span>
-          </div>
-        </Link>
-      ))}
+      {projects.map((project) => {
+        const isSummaryPending = project.summary_confirmed === false;
+        const projectHref = isSummaryPending
+          ? `/projects/${project.id}/summary`
+          : project.plan_status === "approved"
+            ? `/projects/${project.id}/tree`
+            : `/projects/${project.id}/plan`;
+
+        return (
+          <Link className="project-card" href={projectHref} key={project.id}>
+            <div className="project-card-top">
+              <span className="repo-icon">
+                <Sprout aria-hidden="true" size={18} />
+              </span>
+              <ArrowUpRight aria-hidden="true" className="project-arrow" size={18} />
+            </div>
+            <p className="repo-owner">{project.repo_owner}</p>
+            <h2>{project.repo_name}</h2>
+            <div className="project-meta">
+              {isSummaryPending ? (
+                <span className="status-pill status-summary-pending">
+                  Waiting for your confirmation
+                </span>
+              ) : (
+                <span className={`status-pill status-${project.status}`}>
+                  {project.status.replace("_", " ")}
+                </span>
+              )}
+              <span>
+                {isSummaryPending
+                  ? "Summary review"
+                  : project.plan_status === "approved"
+                    ? "Plan approved"
+                    : "Plan in progress"}
+              </span>
+            </div>
+          </Link>
+        );
+      })}
     </div>
   );
 }

@@ -1,28 +1,44 @@
 import { getAccessToken } from "@/lib/session";
 import {
+  acceptMockInvite,
   addMockMember,
   confirmMockNode,
+  confirmMockSummary,
+  createMockInvite,
+  getMockInvite,
   getMockNodeDetail,
   getMockPlan,
   getMockProjectTree,
+  getMockSummary,
+  getMockSummaryVersions,
   getMockViewerTree,
+  listMockInvites,
   mockMembers,
   mockNotifications,
   mockProjects,
   mockShareLinks,
   mockUser,
+  regenerateMockSummary,
+  removeMockMember,
+  resendMockInvite,
+  revokeMockInvite,
   saveMockPlan,
+  updateMockSummary,
 } from "@/lib/mocks";
 import type {
   AuthResponse,
+  InviteType,
   Member,
   NodeDetail,
   NotificationItem,
   Plan,
   Project,
+  ProjectInvite,
   ProjectTree,
+  ReadmeSummary,
   Role,
   ShareLink,
+  SummaryVersion,
   ViewerTree,
 } from "@/lib/types";
 
@@ -79,8 +95,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  githubLoginUrl() {
-    return `${apiBaseUrl()}/auth/github/login`;
+  githubLoginUrl(role?: string) {
+    const query = role ? `?role=${encodeURIComponent(role)}` : "";
+    return `${apiBaseUrl()}/auth/github/login${query}`;
   },
 
   exchangeGithubCode(code: string) {
@@ -104,54 +121,18 @@ export const api = {
         repo_owner: repoOwner,
         repo_name: repoName,
         plan_status: "draft",
-        status: "active",
+        status: "pending_summary",
+        summary_confirmed: false,
+        summary_status: "pending_confirmation",
+        confirmed_by: null,
+        confirmed_at: null,
         created_at: new Date().toISOString(),
       };
       mockProjects.unshift(project);
       addMockMember(project.id, ownerRole);
 
-      // Initialize starter draft plan for this project
-      const starterPlan: Plan = {
-        nodes: [
-          {
-            key: "n1",
-            title: `Set up ${repoName} foundation`,
-            description: "Initialize directory structure, shared types, and build scripts.",
-            role: ownerRole,
-            done_criteria: "The project compiles cleanly and team conventions are documented.",
-            path_hints: ["src"],
-            depends_on: [],
-          },
-          {
-            key: "n2",
-            title: "Build core user interface",
-            description: "Implement interactive client components and responsive layouts.",
-            role: "frontend",
-            done_criteria: "UI is responsive and adheres to brand color palette.",
-            path_hints: ["frontend"],
-            depends_on: ["n1"],
-          },
-          {
-            key: "n3",
-            title: "Configure API endpoints and data model",
-            description: "Connect services and implement data validation.",
-            role: "backend",
-            done_criteria: "All CRUD endpoints return correct data contracts.",
-            path_hints: ["backend"],
-            depends_on: ["n1"],
-          },
-          {
-            key: "n4",
-            title: "Security and permission audit",
-            description: "Verify role-based access control and sanitize user inputs.",
-            role: "security",
-            done_criteria: "Audit passes with zero critical vulnerabilities.",
-            path_hints: ["security"],
-            depends_on: ["n2", "n3"],
-          },
-        ],
-      };
-      saveMockPlan(newId, starterPlan);
+      // Pre-seed summary for the newly created repo
+      getMockSummary(newId);
 
       return project;
     }
@@ -163,6 +144,104 @@ export const api = {
         owner_role: ownerRole,
       }),
     });
+  },
+
+  async getReadmeSummary(projectId: number) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return getMockSummary(projectId);
+    }
+    return request<ReadmeSummary>(`/projects/${projectId}/summary`);
+  },
+
+  async regenerateSummary(projectId: number, notes: string) {
+    if (useMockData) {
+      // 1.5s simulated AI re-reading delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return regenerateMockSummary(projectId, notes);
+    }
+    return request<ReadmeSummary>(`/projects/${projectId}/summary/regenerate`, {
+      method: "POST",
+      body: JSON.stringify({ notes }),
+    });
+  },
+
+  async updateSummary(projectId: number, edits: Partial<ReadmeSummary>) {
+    if (useMockData) {
+      return updateMockSummary(projectId, edits);
+    }
+    return request<ReadmeSummary>(`/projects/${projectId}/summary`, {
+      method: "PATCH",
+      body: JSON.stringify(edits),
+    });
+  },
+
+  async confirmSummary(projectId: number) {
+    if (useMockData) {
+      // 1.5s simulated plan generation delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const res = confirmMockSummary(projectId);
+
+      // Generate the plan only AFTER confirmation
+      const existingPlan = getMockPlan(projectId);
+      if (!existingPlan || existingPlan.nodes.length === 0) {
+        const project = mockProjects.find((p) => p.id === projectId);
+        const repoName = project?.repo_name || "project";
+        const starterPlan: Plan = {
+          nodes: [
+            {
+              key: "n1",
+              title: `Set up ${repoName} foundation`,
+              description: "Initialize directory structure, shared types, and build scripts.",
+              role: "backend",
+              done_criteria: "The project compiles cleanly and team conventions are documented.",
+              path_hints: ["src"],
+              depends_on: [],
+            },
+            {
+              key: "n2",
+              title: "Build core user interface",
+              description: "Implement interactive client components and responsive layouts.",
+              role: "frontend",
+              done_criteria: "UI is responsive and adheres to brand color palette.",
+              path_hints: ["frontend"],
+              depends_on: ["n1"],
+            },
+            {
+              key: "n3",
+              title: "Configure API endpoints and data model",
+              description: "Connect services and implement data validation.",
+              role: "backend",
+              done_criteria: "All CRUD endpoints return correct data contracts.",
+              path_hints: ["backend"],
+              depends_on: ["n1"],
+            },
+            {
+              key: "n4",
+              title: "Security and permission audit",
+              description: "Verify role-based access control and sanitize user inputs.",
+              role: "security",
+              done_criteria: "Audit passes with zero critical vulnerabilities.",
+              path_hints: ["security"],
+              depends_on: ["n2", "n3"],
+            },
+          ],
+        };
+        saveMockPlan(projectId, starterPlan);
+      }
+      return res;
+    }
+    return request<{ project_id: number; summary_status: string; confirmed_by: string; confirmed_at: string }>(
+      `/projects/${projectId}/summary/confirm`,
+      { method: "POST" }
+    );
+  },
+
+  async getSummaryVersions(projectId: number) {
+    if (useMockData) {
+      return getMockSummaryVersions(projectId);
+    }
+    return request<SummaryVersion[]>(`/projects/${projectId}/summary/versions`);
   },
 
   getProject(projectId: number) {
@@ -317,5 +396,87 @@ export const api = {
         : Promise.reject(new ApiError("Viewer link is invalid or has been revoked.", 404));
     }
     return request<ViewerTree>(`/view/${encodeURIComponent(token)}`);
+  },
+
+  async listInvites(projectId: number) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return listMockInvites(projectId);
+    }
+    return request<ProjectInvite[]>(`/projects/${projectId}/invites`);
+  },
+
+  async createInvite(
+    projectId: number,
+    params: {
+      type: InviteType;
+      githubUsername?: string;
+      role?: Role | null;
+      expiresIn?: string;
+      maxUses?: number;
+    }
+  ) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return createMockInvite(projectId, params);
+    }
+    return request<ProjectInvite>(`/projects/${projectId}/invites`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
+  async resendInvite(id: number) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return resendMockInvite(id);
+    }
+    return request<ProjectInvite>(`/invites/${id}/resend`, {
+      method: "POST",
+    });
+  },
+
+  async revokeInvite(id: number) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return revokeMockInvite(id);
+    }
+    return request<ProjectInvite>(`/invites/${id}/revoke`, {
+      method: "POST",
+    });
+  },
+
+  async getInvite(token: string) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return getMockInvite(token);
+    }
+    return request<{ invite: ProjectInvite; project: Project; invited_by: string }>(
+      `/invites/${encodeURIComponent(token)}`
+    );
+  },
+
+  async acceptInvite(token: string, role?: Role, username?: string) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return acceptMockInvite(token, role, username);
+    }
+    return request<{ project: Project; member: Member; is_mentor?: boolean }>(
+      `/invites/${encodeURIComponent(token)}/accept`,
+      {
+        method: "POST",
+        body: JSON.stringify({ role }),
+      }
+    );
+  },
+
+  async removeMember(projectId: number, userId: number) {
+    if (useMockData) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return removeMockMember(projectId, userId);
+    }
+    return request<{ success: boolean }>(`/projects/${projectId}/members/${userId}`, {
+      method: "DELETE",
+    });
   },
 };

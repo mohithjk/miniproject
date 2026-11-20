@@ -20,6 +20,81 @@ export type Project = {
   plan_status: string;
   status: string;
   created_at: string;
+  summary_confirmed?: boolean;
+  summary_status?: "pending_confirmation" | "confirmed" | "out_of_date";
+  confirmed_by?: string | null;
+  confirmed_at?: string | null;
+};
+
+export type SummaryConfidence = "high" | "medium" | "low";
+
+export type RoleWorkItems = {
+  frontend: string[];
+  backend: string[];
+  ai_ml: string[];
+  security: string[];
+  devops: string[];
+};
+
+export type UncertainItem = {
+  id: string;
+  question: string;
+  assumption: string;
+  user_answer?: string;
+};
+
+export type ReadmeSummary = {
+  id: number;
+  project_id: number;
+  version: number;
+  project_name: string;
+  purpose: string;
+  problem_solved: string;
+  features: string[];
+  tech_stack: {
+    languages: string[];
+    frameworks: string[];
+    tools: string[];
+    databases?: string[];
+  };
+  work_by_role: RoleWorkItems;
+  uncertain_items: UncertainItem[];
+  confidence: SummaryConfidence;
+  confidence_reason: string;
+  readme_raw?: string;
+  readme_last_updated?: string;
+  is_truncated?: boolean;
+  is_empty?: boolean;
+  detected_language?: string;
+  edited_by_user?: boolean;
+  edited_sections?: Record<string, boolean>;
+  created_at: string;
+};
+
+export type SummaryVersion = {
+  version: number;
+  created_at: string;
+  summary: ReadmeSummary;
+  notes?: string;
+};
+
+export type InviteType = "username" | "link" | "mentor";
+
+export type ProjectInvite = {
+  id: number;
+  project_id: number;
+  type: InviteType;
+  github_username?: string | null;
+  role?: Role | null;
+  token: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+  created_at: string;
+  expires_at: string;
+  max_uses?: number;
+  uses_count?: number;
+  invited_by_username: string;
+  avatar_url?: string | null;
+  last_sent_at?: string;
 };
 
 export type Role = "frontend" | "backend" | "ai_ml" | "security" | "devops";

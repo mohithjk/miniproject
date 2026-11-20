@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Plus, Trash2 } from "lucide-react";
 import { Brand } from "@/components/Brand";
+import { ConnectStepper } from "@/components/ConnectStepper";
 import { RoleSelect } from "@/components/RoleSelect";
 import { api } from "@/lib/api";
-import { getSessionUser } from "@/lib/session";
+import { getCurrentUser } from "@/lib/auth";
 import type { Plan, PlanNode, Project, Role } from "@/lib/types";
 
 const newNode = (nodes: PlanNode[]): PlanNode => {
@@ -41,8 +42,13 @@ export default function PlanReviewPage() {
       setLoading(false);
       return;
     }
-    if (!getSessionUser()) {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
       router.replace("/login");
+      return;
+    }
+    if (currentUser.role === "mentor") {
+      router.replace(`/projects/${projectId}/tree`);
       return;
     }
 
@@ -51,6 +57,10 @@ export default function PlanReviewPage() {
         api.getPlan(projectId),
         api.getProject(projectId),
       ]);
+      if (projectDetails.summary_confirmed === false) {
+        router.replace(`/projects/${projectId}/summary`);
+        return;
+      }
       setPlan(draft);
       setProject(projectDetails);
     } catch (loadError: unknown) {
@@ -153,8 +163,12 @@ export default function PlanReviewPage() {
         <Link className="back-link" href="/dashboard"><ArrowLeft aria-hidden="true" size={16} /> Dashboard</Link>
       </header>
 
+      <div className="stepper-wrapper">
+        <ConnectStepper currentStep="plan" />
+      </div>
+
       <section className="plan-content">
-        <div className="onboarding-step"><span>02</span> Review your plan</div>
+        <div className="onboarding-step"><span>03</span> Review your plan</div>
         {loading ? (
           <div aria-busy="true" aria-label="Loading project plan" className="plan-loading" role="status">
             <div className="plan-skeleton-heading">

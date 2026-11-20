@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Check, Clock3, GitBranch, GitCommitHorizontal, RefreshCw, Sparkles, UsersRound, X } from "lucide-react";
+import { ArrowLeft, Check, Clock3, Eye, GitBranch, GitCommitHorizontal, RefreshCw, Sparkles, UsersRound, X } from "lucide-react";
 import { Brand } from "@/components/Brand";
 import { DemoController } from "@/components/DemoController";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ShareControls } from "@/components/ShareControls";
 import { TreeCanvas } from "@/components/TreeCanvas";
 import { ApiError, api } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import { clearSession, getSessionUser } from "@/lib/session";
 import type { NodeDetail, Project, ProjectTree, TreeNode, User } from "@/lib/types";
 
@@ -111,6 +112,10 @@ export default function ProjectTreePage() {
     Promise.all([api.getProject(projectId), api.getProjectTree(projectId)])
       .then(([projectDetails, projectTree]) => {
         if (!active) return;
+        if (projectDetails.summary_confirmed === false) {
+          router.replace(`/projects/${projectId}/summary`);
+          return;
+        }
         setProject(projectDetails);
         setTree(projectTree);
         setError("");
@@ -135,7 +140,7 @@ export default function ProjectTreePage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, [handleAuthError, projectId, refreshTree, user]);
+  }, [handleAuthError, projectId, refreshTree, router, user]);
 
   useEffect(() => {
     if (!selectedNode) return;
@@ -197,8 +202,11 @@ export default function ProjectTreePage() {
     }
   }
 
+  const isUserMentor = getCurrentUser()?.role === "mentor";
+
   const canConfirm = Boolean(
-    detail
+    !isUserMentor
+    && detail
     && project
     && user
     && (project.owner_id === user.id || detail.node.owner_id === user.id)
@@ -210,16 +218,26 @@ export default function ProjectTreePage() {
   return (
     <main className="tree-page">
       <header className="dashboard-header">
-        <Brand />
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <Brand />
+          {isUserMentor && (
+            <span className="view-only-badge" title="Logged in as Mentor">
+              <Eye aria-hidden="true" size={12} />
+              View only
+            </span>
+          )}
+        </div>
         <nav aria-label="Project navigation" className="tree-nav">
           <Link className="back-link" href="/dashboard"><ArrowLeft aria-hidden="true" size={16} /> Projects</Link>
-          <Link aria-label="Project plan" className="back-link" href={`/projects/${projectId}/plan`}>
-            <GitBranch aria-hidden="true" className="mobile-nav-icon" size={16} /><span>Plan</span>
-          </Link>
+          {!isUserMentor && (
+            <Link aria-label="Project plan" className="back-link" href={`/projects/${projectId}/plan`}>
+              <GitBranch aria-hidden="true" className="mobile-nav-icon" size={16} /><span>Plan</span>
+            </Link>
+          )}
           <Link aria-label="Project team" className="back-link" href={`/projects/${projectId}/members`}>
             <UsersRound aria-hidden="true" className="mobile-nav-icon" size={16} /><span>Team</span>
           </Link>
-          <ShareControls projectId={projectId} />
+          {!isUserMentor && <ShareControls projectId={projectId} />}
           <NotificationBell />
         </nav>
       </header>
@@ -378,8 +396,11 @@ export default function ProjectTreePage() {
                           {confirming ? "Confirming..." : "Confirm completion"}
                         </button>
                       )}
-                      {!canConfirm && aiNeedsConfirmation && (
+                      {!canConfirm && !isUserMentor && aiNeedsConfirmation && (
                         <p className="confirm-owner-note">Only this work item&apos;s owner or the project owner can confirm completion.</p>
+                      )}
+                      {isUserMentor && (
+                        <p className="confirm-owner-note">Viewing as mentor (view-only mode).</p>
                       )}
                     </div>
                   ) : (

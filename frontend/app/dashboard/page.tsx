@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Plus } from "lucide-react";
+import { Eye, LogOut, Plus } from "lucide-react";
 import { Brand } from "@/components/Brand";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProjectList } from "@/components/ProjectList";
@@ -56,6 +56,12 @@ export default function DashboardPage() {
         <Brand />
         {user && (
           <div className="account-menu">
+            {user.role === "mentor" && (
+              <span className="view-only-badge" title="Logged in as Mentor">
+                <Eye aria-hidden="true" size={12} />
+                View only
+              </span>
+            )}
             <NotificationBell />
             {user.avatar ? (
               // GitHub provides a remote avatar; a plain img avoids extra domain setup.
@@ -75,14 +81,22 @@ export default function DashboardPage() {
           <div>
             <p className="eyebrow">Your workspace</p>
             <h1>Good things are growing.</h1>
-            <p className="dashboard-subtitle">Here&apos;s what your team is building together.</p>
+            <p className="dashboard-subtitle">
+              {user?.role === "mentor"
+                ? "Here is what your teams are building. View only mode."
+                : "Here's what your team is building together."}
+            </p>
           </div>
-          <button aria-describedby="connect-help" className="connect-button" onClick={() => router.push("/projects/new")} type="button">
-            <Plus aria-hidden="true" size={19} />
-            Connect a repo
-          </button>
+          {user?.role !== "mentor" && (
+            <button aria-describedby="connect-help" className="connect-button" onClick={() => router.push("/projects/new")} type="button">
+              <Plus aria-hidden="true" size={19} />
+              Connect a repo
+            </button>
+          )}
         </div>
-        <p className="connect-help" id="connect-help">Choose a repository you can access on GitHub.</p>
+        {user?.role !== "mentor" && (
+          <p className="connect-help" id="connect-help">Choose a repository you can access on GitHub.</p>
+        )}
 
         <div className="section-heading">
           <h2>Your projects</h2>
